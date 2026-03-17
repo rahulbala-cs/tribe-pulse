@@ -1,13 +1,18 @@
 'use client'
 
-import html2canvas from 'html2canvas'
+import { toPng } from 'html-to-image'
 import { jsPDF } from 'jspdf'
 
-const PDF_OPTIONS = {
-	scale: 2,
-	useCORS: true,
-	logging: false,
+const CAPTURE_OPTIONS = {
+	pixelRatio: 2,
 	backgroundColor: '#ffffff',
+}
+
+async function captureElement(element: HTMLElement): Promise<{ imgData: string; width: number; height: number }> {
+	const imgData = await toPng(element, CAPTURE_OPTIONS)
+	const img = new Image()
+	await new Promise<void>(resolve => { img.onload = () => resolve(); img.src = imgData })
+	return { imgData, width: img.width, height: img.height }
 }
 
 /**
@@ -17,14 +22,13 @@ export async function exportElementToPdf(
 	element: HTMLElement,
 	filename: string,
 ): Promise<void> {
-	const canvas = await html2canvas(element, PDF_OPTIONS)
-	const imgData = canvas.toDataURL('image/png')
+	const { imgData, width, height } = await captureElement(element)
 	const pdf = new jsPDF({
-		orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+		orientation: width > height ? 'landscape' : 'portrait',
 		unit: 'px',
-		format: [canvas.width, canvas.height],
+		format: [width, height],
 	})
-	pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height)
+	pdf.addImage(imgData, 'PNG', 0, 0, width, height)
 	pdf.save(`${filename}.pdf`)
 }
 
@@ -41,10 +45,9 @@ export async function exportElementsToPdf(
 	const margin = 10
 
 	for (let i = 0; i < elements.length; i++) {
-		const canvas = await html2canvas(elements[i], PDF_OPTIONS)
-		const imgData = canvas.toDataURL('image/png')
+		const { imgData, width, height } = await captureElement(elements[i])
 		const imgWidth = pageWidth - 2 * margin
-		const imgHeight = (canvas.height * imgWidth) / canvas.width
+		const imgHeight = (height * imgWidth) / width
 
 		if (i > 0) pdf.addPage()
 		if (imgHeight > pageHeight - 2 * margin) {

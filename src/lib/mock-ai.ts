@@ -59,33 +59,36 @@ export async function getTeamAggregations(
 	const prevStartDate = new Date(startDate)
 	prevStartDate.setDate(prevStartDate.getDate() - daysBack)
 
-	const teams = await prisma.team.findMany({
-		include: { department: true },
-	})
-
-	const aggregations: TeamAggregation[] = []
-
-	for (const team of teams) {
-		const currentEntries = await prisma.moodEntry.findMany({
-			where: {
-				employee: { teamId: team.id },
-				createdAt: { gte: startDate },
+	// Single query: fetch all teams + all relevant mood entries at once (no N+1)
+	const [teams, allEntries] = await Promise.all([
+		prisma.team.findMany({ include: { department: true } }),
+		prisma.moodEntry.findMany({
+			where: { createdAt: { gte: prevStartDate } },
+			include: {
+				reasons: true,
+				employee: { select: { teamId: true } },
 			},
-			include: { reasons: true },
-		})
+		}),
+	])
 
-		const prevEntries = await prisma.moodEntry.findMany({
-			where: {
-				employee: { teamId: team.id },
-				createdAt: { gte: prevStartDate, lt: startDate },
-			},
-		})
+	// Group entries by teamId in memory
+	const entriesByTeam: Record<string, typeof allEntries> = {}
+	for (const entry of allEntries) {
+		const teamId = entry.employee.teamId
+		if (!entriesByTeam[teamId]) entriesByTeam[teamId] = []
+		entriesByTeam[teamId].push(entry)
+	}
+
+	return teams.map(team => {
+		const teamEntries = entriesByTeam[team.id] ?? []
+		const currentEntries = teamEntries.filter(e => e.createdAt >= startDate)
+		const prevEntries = teamEntries.filter(e => e.createdAt >= prevStartDate && e.createdAt < startDate)
 
 		const avgMood = currentEntries.length > 0
-			? currentEntries.reduce((s: number, e: { moodLevel: number }) => s + e.moodLevel, 0) / currentEntries.length
+			? currentEntries.reduce((s, e) => s + e.moodLevel, 0) / currentEntries.length
 			: 3
 		const prevAvgMood = prevEntries.length > 0
-			? prevEntries.reduce((s: number, e: { moodLevel: number }) => s + e.moodLevel, 0) / prevEntries.length
+			? prevEntries.reduce((s, e) => s + e.moodLevel, 0) / prevEntries.length
 			: 3
 
 		const reasonCounts: Record<string, number> = {}
@@ -104,9 +107,9 @@ export async function getTeamAggregations(
 				percentage: Math.round((count / Math.max(currentEntries.length, 1)) * 100),
 			}))
 
-		const lowMoodEntries = currentEntries.filter((e: { moodLevel: number }) => e.moodLevel <= 2).length
+		const lowMoodEntries = currentEntries.filter(e => e.moodLevel <= 2).length
 
-		aggregations.push({
+		return {
 			teamName: team.name,
 			departmentName: team.department.name,
 			avgMood: Math.round(avgMood * 100) / 100,
@@ -114,10 +117,8 @@ export async function getTeamAggregations(
 			totalEntries: currentEntries.length,
 			topReasons,
 			lowMoodStreaks: lowMoodEntries,
-		})
-	}
-
-	return aggregations
+		}
+	})
 }
 
 export function generateTeamSummary(agg: TeamAggregation): string {

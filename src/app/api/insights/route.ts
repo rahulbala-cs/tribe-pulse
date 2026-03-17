@@ -8,8 +8,17 @@ import {
 } from '@/lib/mock-ai'
 import { prisma } from '@/lib/db'
 
+// Cache for 60 seconds — multiple dashboard pages share one computation
+export const revalidate = 60
+
 export async function GET() {
-	const aggregations = await getTeamAggregations(7)
+	const [aggregations, patterns, events, heatmapData] = await Promise.all([
+		getTeamAggregations(7),
+		detectLowMoodPatterns(3),
+		prisma.orgEvent.findMany({ orderBy: { date: 'asc' } }),
+		getHeatmapData(),
+	])
+
 	const orgSummary = generateOrgSummary(aggregations)
 	const teamSummaries = aggregations.map(a => ({
 		team: a.teamName,
@@ -19,13 +28,6 @@ export async function GET() {
 		prevAvgMood: a.prevAvgMood,
 	}))
 	const recommendations = generateRecommendations(aggregations)
-	const patterns = await detectLowMoodPatterns(3)
-
-	const events = await prisma.orgEvent.findMany({
-		orderBy: { date: 'asc' },
-	})
-
-	const heatmapData = await getHeatmapData()
 
 	return NextResponse.json({
 		orgSummary,

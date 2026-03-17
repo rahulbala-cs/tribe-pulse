@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 
+export const revalidate = 60
+
 export async function GET(req: NextRequest) {
 	const { searchParams } = new URL(req.url)
 	const days = parseInt(searchParams.get('days') || '30')
