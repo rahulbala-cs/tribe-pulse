@@ -8,9 +8,10 @@ import {
 interface MoodAreaChartProps {
 	data: { date: string; avgMood: number; totalEntries: number }[]
 	height?: number
+	isAnimationActive?: boolean
 }
 
-export function MoodAreaChart({ data, height = 300 }: MoodAreaChartProps) {
+export function MoodAreaChart({ data, height = 300, isAnimationActive = true }: MoodAreaChartProps) {
 	return (
 		<ResponsiveContainer width="100%" height={height}>
 			<AreaChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -45,6 +46,7 @@ export function MoodAreaChart({ data, height = 300 }: MoodAreaChartProps) {
 					stroke="#10b981"
 					strokeWidth={2}
 					fill="url(#moodGradient)"
+					isAnimationActive={isAnimationActive}
 				/>
 			</AreaChart>
 		</ResponsiveContainer>

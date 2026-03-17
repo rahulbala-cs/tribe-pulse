@@ -8,6 +8,7 @@ import {
 interface TeamBarChartProps {
 	data: { name: string; avgMood: number; department: string }[]
 	height?: number
+	isAnimationActive?: boolean
 }
 
 const DEPT_COLORS: Record<string, string> = {
@@ -16,7 +17,7 @@ const DEPT_COLORS: Record<string, string> = {
 	Operations: '#f59e0b',
 }
 
-export function TeamBarChart({ data, height = 300 }: TeamBarChartProps) {
+export function TeamBarChart({ data, height = 300, isAnimationActive = true }: TeamBarChartProps) {
 	const sorted = [...data].sort((a, b) => b.avgMood - a.avgMood)
 
 	return (
@@ -42,7 +43,7 @@ export function TeamBarChart({ data, height = 300 }: TeamBarChartProps) {
 					}}
 					formatter={(value) => [Number(value).toFixed(2), 'Avg Mood']}
 				/>
-				<Bar dataKey="avgMood" radius={[0, 4, 4, 0]} barSize={24}>
+				<Bar dataKey="avgMood" radius={[0, 4, 4, 0]} barSize={24} isAnimationActive={isAnimationActive}>
 					{sorted.map((entry, i) => (
 						<Cell
 							key={i}

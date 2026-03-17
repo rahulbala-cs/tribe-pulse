@@ -40,7 +40,7 @@ export function ExportThisPageButton() {
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 py-2 text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-				disabled={!canExport || exporting}
+				disabled={exporting}
 			>
 				{exporting ? (
 					<Loader2 className="h-4 w-4 animate-spin" />
@@ -57,7 +57,7 @@ export function ExportThisPageButton() {
 					<FileText className="h-4 w-4 mr-2" />
 					Export this page (PDF)
 				</DropdownMenuItem>
-				<DropdownMenuItem onClick={() => router.push('/dashboard/report')}>
+				<DropdownMenuItem onClick={() => router.push('/dashboard/report?autoexport=1')}>
 					<FileText className="h-4 w-4 mr-2" />
 					Export full report (all screens)
 				</DropdownMenuItem>
