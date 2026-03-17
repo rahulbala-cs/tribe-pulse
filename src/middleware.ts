@@ -8,6 +8,11 @@ export function middleware(req: NextRequest) {
 		return NextResponse.next()
 	}
 
+	// Seed endpoint uses its own Bearer token auth
+	if (pathname === '/api/seed') {
+		return NextResponse.next()
+	}
+
 	// Protect dashboard and all other API routes
 	if (pathname.startsWith('/dashboard') || pathname.startsWith('/api/')) {
 		const authHeader = req.headers.get('authorization')
