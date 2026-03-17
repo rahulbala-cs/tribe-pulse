@@ -1,13 +1,74 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id          String       @id @default(uuid())
+  name        String
+  departments Department[]
+  createdAt   DateTime     @default(now())
+}
+
+model Department {
+  id             String       @id @default(uuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  teams          Team[]
+  createdAt      DateTime     @default(now())
+}
+
+model Team {
+  id           String     @id @default(uuid())
+  name         String
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  employees    Employee[]
+  createdAt    DateTime   @default(now())
+}
+
+model Employee {
+  id                 String      @id @default(uuid())
+  slackUserId        String      @unique
+  name               String
+  email              String
+  location           String
+  isAnonymousDefault Boolean     @default(false)
+  teamId             String
+  team               Team        @relation(fields: [teamId], references: [id])
+  moodEntries        MoodEntry[]
+  createdAt          DateTime    @default(now())
+}
+
+model MoodEntry {
+  id          String       @id @default(uuid())
+  employeeId  String
+  employee    Employee     @relation(fields: [employeeId], references: [id])
+  moodLevel   Int
+  moodLabel   String
+  freeText    String?
+  isAnonymous Boolean      @default(false)
+  sentiment   Float?
+  reasons     MoodReason[]
+  createdAt   DateTime     @default(now())
+}
+
+model MoodReason {
+  id          String    @id @default(uuid())
+  moodEntryId String
+  moodEntry   MoodEntry @relation(fields: [moodEntryId], references: [id])
+  category    String
+}
+
+model OrgEvent {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  date        DateTime
+  createdAt   DateTime @default(now())
 }
