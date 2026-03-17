@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageExportWrapper } from '@/components/dashboard/page-export-wrapper'
 import { Badge } from '@/components/ui/badge'
@@ -39,19 +39,11 @@ interface InsightData {
 	}[]
 }
 
-export default function OverviewPage() {
-	const [trendData, setTrendData] = useState<TrendData | null>(null)
-	const [insights, setInsights] = useState<InsightData | null>(null)
+const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-	useEffect(() => {
-		Promise.all([
-			fetch('/api/trends?days=30').then(r => r.json()),
-			fetch('/api/insights').then(r => r.json()),
-		]).then(([t, i]) => {
-			setTrendData(t)
-			setInsights(i)
-		})
-	}, [])
+export default function OverviewPage() {
+	const { data: trendData } = useSWR<TrendData>('/api/trends?days=30', fetcher, { dedupingInterval: 300000 })
+	const { data: insights } = useSWR<InsightData>('/api/insights', fetcher, { dedupingInterval: 300000 })
 
 	if (!trendData || !insights) {
 		return (

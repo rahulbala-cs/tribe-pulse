@@ -8,8 +8,7 @@ import {
 } from '@/lib/mock-ai'
 import { prisma } from '@/lib/db'
 
-// Cache for 60 seconds — multiple dashboard pages share one computation
-export const revalidate = 60
+export const revalidate = 300
 
 export async function GET() {
 	const [aggregations, patterns, events, heatmapData] = await Promise.all([

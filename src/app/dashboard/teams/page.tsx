@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageExportWrapper } from '@/components/dashboard/page-export-wrapper'
 import { Badge } from '@/components/ui/badge'
@@ -27,16 +27,12 @@ interface DeptData {
 	employeeCount: number
 }
 
-export default function TeamsPage() {
-	const [teams, setTeams] = useState<TeamData[]>([])
-	const [departments, setDepartments] = useState<DeptData[]>([])
+const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-	useEffect(() => {
-		fetch('/api/teams?days=7').then(r => r.json()).then(d => {
-			setTeams(d.teams)
-			setDepartments(d.departments)
-		})
-	}, [])
+export default function TeamsPage() {
+	const { data } = useSWR<{ teams: TeamData[]; departments: DeptData[] }>('/api/teams?days=7', fetcher, { dedupingInterval: 300000 })
+	const teams = data?.teams ?? []
+	const departments = data?.departments ?? []
 
 	if (teams.length === 0) {
 		return (

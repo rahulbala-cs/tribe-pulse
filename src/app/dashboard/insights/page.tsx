@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PageExportWrapper } from '@/components/dashboard/page-export-wrapper'
@@ -66,12 +66,10 @@ const severityConfig = {
 	},
 }
 
-export default function InsightsPage() {
-	const [data, setData] = useState<InsightData | null>(null)
+const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-	useEffect(() => {
-		fetch('/api/insights').then(r => r.json()).then(setData)
-	}, [])
+export default function InsightsPage() {
+	const { data } = useSWR<InsightData>('/api/insights', fetcher, { dedupingInterval: 300000 })
 
 	if (!data) {
 		return (

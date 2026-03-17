@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache'
 import { prisma } from './db'
 
 const NEGATIVE_KEYWORDS: Record<string, number> = {
@@ -50,9 +51,8 @@ interface TeamAggregation {
 	lowMoodStreaks: number
 }
 
-export async function getTeamAggregations(
-	daysBack: number = 7,
-): Promise<TeamAggregation[]> {
+export const getTeamAggregations = unstable_cache(
+	async (daysBack: number = 7): Promise<TeamAggregation[]> => {
 	const now = new Date()
 	const startDate = new Date(now)
 	startDate.setDate(startDate.getDate() - daysBack)
@@ -121,7 +121,7 @@ export async function getTeamAggregations(
 			lowMoodStreaks: lowMoodEntries,
 		}
 	})
-}
+}, ['team-aggregations'], { revalidate: 300, tags: ['mood-data'] })
 
 export function generateTeamSummary(agg: TeamAggregation): string {
 	const trend = agg.avgMood > agg.prevAvgMood
@@ -252,9 +252,8 @@ export function generateRecommendations(
 	})
 }
 
-export async function detectLowMoodPatterns(
-	consecutiveDays: number = 3,
-) {
+export const detectLowMoodPatterns = unstable_cache(
+	async (consecutiveDays: number = 3) => {
 	const now = new Date()
 	const startDate = new Date(now)
 	startDate.setDate(startDate.getDate() - 14)
@@ -337,4 +336,4 @@ export async function detectLowMoodPatterns(
 	}
 
 	return alerts
-}
+}, ['low-mood-patterns'], { revalidate: 300, tags: ['mood-data'] })

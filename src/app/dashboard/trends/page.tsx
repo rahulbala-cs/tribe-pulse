@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageExportWrapper } from '@/components/dashboard/page-export-wrapper'
 import { MoodAreaChart } from '@/components/charts/mood-area-chart'
@@ -24,28 +25,19 @@ interface TeamOption {
 	department: string
 }
 
+const fetcher = (url: string) => fetch(url).then(r => r.json())
+
 export default function TrendsPage() {
-	const [data, setData] = useState<TrendData | null>(null)
 	const [days, setDays] = useState('30')
 	const [groupBy, setGroupBy] = useState('day')
-	const [teams, setTeams] = useState<TeamOption[]>([])
 	const [selectedTeam, setSelectedTeam] = useState('all')
 
-	useEffect(() => {
-		fetch('/api/teams?days=30').then(r => r.json()).then(d => {
-			setTeams(d.teams.map((t: { id: string; name: string; department: string }) => ({
-				id: t.id,
-				name: t.name,
-				department: t.department,
-			})))
-		})
-	}, [])
+	const { data: teamsData } = useSWR<{ teams: TeamOption[] }>('/api/teams?days=30', fetcher, { dedupingInterval: 300000 })
+	const teams = teamsData?.teams ?? []
 
-	useEffect(() => {
-		const params = new URLSearchParams({ days, groupBy })
-		if (selectedTeam !== 'all') params.set('teamId', selectedTeam)
-		fetch(`/api/trends?${params}`).then(r => r.json()).then(setData)
-	}, [days, groupBy, selectedTeam])
+	const trendsParams = new URLSearchParams({ days, groupBy })
+	if (selectedTeam !== 'all') trendsParams.set('teamId', selectedTeam)
+	const { data } = useSWR<TrendData>(`/api/trends?${trendsParams}`, fetcher, { dedupingInterval: 60000 })
 
 	if (!data) {
 		return (

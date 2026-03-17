@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useRef, useState } from 'react'
+import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageExportWrapper } from '@/components/dashboard/page-export-wrapper'
 import { Button } from '@/components/ui/button'
@@ -9,24 +10,18 @@ import { MoodAreaChart } from '@/components/charts/mood-area-chart'
 import { TeamBarChart } from '@/components/charts/team-bar-chart'
 import { exportElementsToPdf } from '@/lib/export-pdf'
 
+type TrendsResp = { trends: { date: string; avgMood: number; totalEntries: number }[]; summary: { avgMood: number; totalEntries: number; participationRate: number; topReasons: { category: string; count: number }[] } }
+type TeamsResp = { teams: { name: string; avgMood: number; department: string }[] }
+type InsightsResp = { orgSummary: string; recommendations: { severity: string; title: string; description: string }[]; patterns: { teamName: string; streakLength: number }[]; heatmapData: { day: string; avgMood: number }[] }
+
+const fetcher = (url: string) => fetch(url).then(r => r.json())
+
 export default function ReportPage() {
-	const [data, setData] = useState<{
-		trends: { trends: { date: string; avgMood: number }[]; summary: { avgMood: number; totalEntries: number; participationRate: number; topReasons: { category: string; count: number }[] } }
-		teams: { teams: { name: string; avgMood: number; department: string }[] }
-		insights: { orgSummary: string; recommendations: { severity: string; title: string; description: string }[]; patterns: { teamName: string; streakLength: number }[]; heatmapData: { day: string; avgMood: number }[] }
-	} | null>(null)
+	const { data: trends } = useSWR<TrendsResp>('/api/trends?days=30', fetcher, { dedupingInterval: 300000 })
+	const { data: teams } = useSWR<TeamsResp>('/api/teams?days=7', fetcher, { dedupingInterval: 300000 })
+	const { data: insights } = useSWR<InsightsResp>('/api/insights', fetcher, { dedupingInterval: 300000 })
 	const [exporting, setExporting] = useState(false)
 	const sectionRefs = useRef<(HTMLDivElement | null)[]>([])
-
-	useEffect(() => {
-		Promise.all([
-			fetch('/api/trends?days=30').then(r => r.json()),
-			fetch('/api/teams?days=7').then(r => r.json()),
-			fetch('/api/insights').then(r => r.json()),
-		]).then(([trends, teams, insights]) => {
-			setData({ trends, teams, insights })
-		})
-	}, [])
 
 	async function handleExportFullReport() {
 		const elements = sectionRefs.current.filter(Boolean) as HTMLElement[]
@@ -39,7 +34,7 @@ export default function ReportPage() {
 		}
 	}
 
-	if (!data) {
+	if (!trends || !teams || !insights) {
 		return (
 			<div className="flex items-center justify-center h-96">
 				<div className="animate-pulse text-muted-foreground">
@@ -49,7 +44,6 @@ export default function ReportPage() {
 		)
 	}
 
-	const { trends, teams, insights } = data
 	const sectionClass = 'space-y-4 p-6 border border-border rounded-lg bg-card'
 
 	return (

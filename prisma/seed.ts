@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { randomUUID } from 'crypto'
 
 const prisma = new PrismaClient()
 
@@ -142,13 +143,7 @@ function reasonsForMood(mood: number, teamName: string, location: string): strin
 
 async function main() {
 	console.log('Cleaning database...')
-	await prisma.moodReason.deleteMany()
-	await prisma.moodEntry.deleteMany()
-	await prisma.employee.deleteMany()
-	await prisma.team.deleteMany()
-	await prisma.department.deleteMany()
-	await prisma.organization.deleteMany()
-	await prisma.orgEvent.deleteMany()
+	await prisma.$executeRaw`TRUNCATE TABLE "MoodReason", "MoodEntry", "Employee", "Team", "Department", "Organization", "OrgEvent" CASCADE`
 
 	console.log('Creating organization...')
 	const org = await prisma.organization.create({
@@ -174,6 +169,10 @@ async function main() {
 	const employees: { id: string; teamName: string; location: string; isLowMood: boolean }[] = []
 	const usedNames = new Set<string>()
 	const targetCount = 210
+	const employeeRows: {
+		id: string; name: string; email: string; slackUserId: string
+		location: string; teamId: string; isAnonymousDefault: boolean
+	}[] = []
 
 	for (let i = 0; i < targetCount; i++) {
 		let fullName: string
@@ -185,24 +184,28 @@ async function main() {
 		const teamName = allTeamNames[i % allTeamNames.length]
 		const location = LOCATIONS[i % LOCATIONS.length]
 		const isLowMood = i < 4
+		const id = randomUUID()
 
-		const emp = await prisma.employee.create({
-			data: {
-				name: fullName,
-				email: `${fullName.toLowerCase().replace(' ', '.')}@techcorp.com`,
-				slackUserId: `U${String(i + 1).padStart(8, '0')}`,
-				location,
-				teamId: teamMap[teamName],
-				isAnonymousDefault: Math.random() > 0.8,
-			},
+		employeeRows.push({
+			id, name: fullName,
+			email: `${fullName.toLowerCase().replace(' ', '.')}@techcorp.com`,
+			slackUserId: `U${String(i + 1).padStart(8, '0')}`,
+			location, teamId: teamMap[teamName],
+			isAnonymousDefault: Math.random() > 0.8,
 		})
-		employees.push({ id: emp.id, teamName, location, isLowMood })
+		employees.push({ id, teamName, location, isLowMood })
 	}
+	await prisma.employee.createMany({ data: employeeRows })
 	console.log(`Created ${employees.length} employees`)
 
 	console.log('Creating 30 days of mood entries...')
 	const today = new Date()
-	let entryCount = 0
+
+	const moodEntries: {
+		id: string; employeeId: string; moodLevel: number; moodLabel: string
+		freeText: string | null; isAnonymous: boolean; sentiment: number | null; createdAt: Date
+	}[] = []
+	const moodReasons: { moodEntryId: string; category: string }[] = []
 
 	for (let dayOffset = 29; dayOffset >= 0; dayOffset--) {
 		const date = new Date(today)
@@ -218,33 +221,33 @@ async function main() {
 		for (const emp of employees) {
 			if (Math.random() > participationRate) continue
 
-			const baseMood = 3.5
-			const mood = weightedMood(baseMood, dayOfWeek, weekNum, emp.teamName, emp.isLowMood)
+			const mood = weightedMood(3.5, dayOfWeek, weekNum, emp.teamName, emp.isLowMood)
 			const reasons = reasonsForMood(mood, emp.teamName, emp.location)
 			const freeTexts = FREE_TEXT_BY_MOOD[mood] || FREE_TEXT_BY_MOOD[3]
 			const freeText = pick(freeTexts) || null
-
 			const entryDate = new Date(date)
 			entryDate.setHours(18 + Math.floor(Math.random() * 3), Math.floor(Math.random() * 60))
+			const id = randomUUID()
 
-			await prisma.moodEntry.create({
-				data: {
-					employeeId: emp.id,
-					moodLevel: mood,
-					moodLabel: MOOD_LABELS[mood - 1],
-					freeText,
-					isAnonymous: Math.random() > 0.7,
-					sentiment: freeText ? (mood - 3) / 2 + (Math.random() - 0.5) * 0.3 : null,
-					createdAt: entryDate,
-					reasons: {
-						create: reasons.map(cat => ({ category: cat })),
-					},
-				},
+			moodEntries.push({
+				id, employeeId: emp.id, moodLevel: mood, moodLabel: MOOD_LABELS[mood - 1],
+				freeText, isAnonymous: Math.random() > 0.7,
+				sentiment: freeText ? (mood - 3) / 2 + (Math.random() - 0.5) * 0.3 : null,
+				createdAt: entryDate,
 			})
-			entryCount++
+			for (const cat of reasons) moodReasons.push({ moodEntryId: id, category: cat })
 		}
 	}
-	console.log(`Created ${entryCount} mood entries`)
+
+	// Batch insert in chunks to avoid hitting query size limits
+	const CHUNK = 500
+	for (let i = 0; i < moodEntries.length; i += CHUNK) {
+		await prisma.moodEntry.createMany({ data: moodEntries.slice(i, i + CHUNK) })
+	}
+	for (let i = 0; i < moodReasons.length; i += CHUNK) {
+		await prisma.moodReason.createMany({ data: moodReasons.slice(i, i + CHUNK) })
+	}
+	console.log(`Created ${moodEntries.length} mood entries, ${moodReasons.length} reasons`)
 
 	console.log('Creating org events...')
 	const events = [

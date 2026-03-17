@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageExportWrapper } from '@/components/dashboard/page-export-wrapper'
 import { Badge } from '@/components/ui/badge'
@@ -30,12 +30,10 @@ const REASON_COLORS: Record<string, string> = {
 	'Personal': '#ec4899',
 }
 
-export default function ReasonsPage() {
-	const [data, setData] = useState<TrendData | null>(null)
+const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-	useEffect(() => {
-		fetch('/api/trends?days=30&groupBy=day').then(r => r.json()).then(setData)
-	}, [])
+export default function ReasonsPage() {
+	const { data } = useSWR<TrendData>('/api/trends?days=30&groupBy=day', fetcher, { dedupingInterval: 300000 })
 
 	if (!data) {
 		return (

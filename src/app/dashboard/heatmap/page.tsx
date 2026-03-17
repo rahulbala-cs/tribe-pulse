@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageExportWrapper } from '@/components/dashboard/page-export-wrapper'
 
@@ -26,14 +26,11 @@ function getMoodBg(mood: number): string {
 	return 'bg-red-100 dark:bg-red-950/40'
 }
 
-export default function HeatmapPage() {
-	const [heatmapData, setHeatmapData] = useState<HeatmapDay[]>([])
+const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-	useEffect(() => {
-		fetch('/api/insights').then(r => r.json()).then(d => {
-			setHeatmapData(d.heatmapData)
-		})
-	}, [])
+export default function HeatmapPage() {
+	const { data } = useSWR<{ heatmapData: HeatmapDay[] }>('/api/insights', fetcher, { dedupingInterval: 300000 })
+	const heatmapData = data?.heatmapData ?? []
 
 	if (heatmapData.length === 0) {
 		return (

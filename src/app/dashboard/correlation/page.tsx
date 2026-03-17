@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PageExportWrapper } from '@/components/dashboard/page-export-wrapper'
@@ -23,19 +23,13 @@ interface OrgEvent {
 	date: string
 }
 
-export default function CorrelationPage() {
-	const [trends, setTrends] = useState<TrendPoint[]>([])
-	const [events, setEvents] = useState<OrgEvent[]>([])
+const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-	useEffect(() => {
-		Promise.all([
-			fetch('/api/trends?days=30').then(r => r.json()),
-			fetch('/api/insights').then(r => r.json()),
-		]).then(([trendData, insightData]) => {
-			setTrends(trendData.trends)
-			setEvents(insightData.events)
-		})
-	}, [])
+export default function CorrelationPage() {
+	const { data: trendData } = useSWR<{ trends: TrendPoint[] }>('/api/trends?days=30', fetcher, { dedupingInterval: 300000 })
+	const { data: insightData } = useSWR<{ events: OrgEvent[] }>('/api/insights', fetcher, { dedupingInterval: 300000 })
+	const trends = trendData?.trends ?? []
+	const events = insightData?.events ?? []
 
 	if (trends.length === 0) {
 		return (
