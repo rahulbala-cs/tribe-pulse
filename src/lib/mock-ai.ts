@@ -61,11 +61,13 @@ export async function getTeamAggregations(
 
 	// Single query: fetch all teams + all relevant mood entries at once (no N+1)
 	const [teams, allEntries] = await Promise.all([
-		prisma.team.findMany({ include: { department: true } }),
+		prisma.team.findMany({ select: { id: true, name: true, department: { select: { name: true } } } }),
 		prisma.moodEntry.findMany({
 			where: { createdAt: { gte: prevStartDate } },
-			include: {
-				reasons: true,
+			select: {
+				moodLevel: true,
+				createdAt: true,
+				reasons: { select: { category: true } },
 				employee: { select: { teamId: true } },
 			},
 		}),
@@ -259,8 +261,22 @@ export async function detectLowMoodPatterns(
 
 	const entries = await prisma.moodEntry.findMany({
 		where: { createdAt: { gte: startDate } },
-		include: {
-			employee: { include: { team: { include: { department: true } } } },
+		select: {
+			moodLevel: true,
+			createdAt: true,
+			employeeId: true,
+			employee: {
+				select: {
+					name: true,
+					isAnonymousDefault: true,
+					team: {
+						select: {
+							name: true,
+							department: { select: { name: true } },
+						},
+					},
+				},
+			},
 		},
 		orderBy: { createdAt: 'asc' },
 	})

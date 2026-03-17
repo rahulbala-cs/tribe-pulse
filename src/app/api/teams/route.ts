@@ -13,64 +13,72 @@ export async function GET(req: NextRequest) {
 	const prevStartDate = new Date(startDate)
 	prevStartDate.setDate(prevStartDate.getDate() - days)
 
-	const teams = await prisma.team.findMany({
-		include: {
-			department: true,
-			employees: {
-				include: {
-					moodEntries: {
-						where: { createdAt: { gte: prevStartDate } },
-						include: { reasons: true },
-						orderBy: { createdAt: 'desc' },
-					},
-				},
+	// 3 parallel flat queries instead of one deep nested include
+	const [teams, allEntries, employeeCounts] = await Promise.all([
+		prisma.team.findMany({
+			select: {
+				id: true,
+				name: true,
+				department: { select: { name: true } },
 			},
-		},
-	})
+		}),
+		prisma.moodEntry.findMany({
+			where: { createdAt: { gte: prevStartDate } },
+			select: {
+				moodLevel: true,
+				createdAt: true,
+				employeeId: true,
+				reasons: { select: { category: true } },
+				employee: { select: { teamId: true } },
+			},
+		}),
+		prisma.employee.groupBy({ by: ['teamId'], _count: { id: true } }),
+	])
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const teamData = teams.map((team: any) => {
-		const currentEntries = team.employees.flatMap((e: any) =>
-			e.moodEntries.filter((m: any) => new Date(m.createdAt) >= startDate),
-		)
-		const prevEntries = team.employees.flatMap((e: any) =>
-			e.moodEntries.filter((m: any) => {
-				const d = new Date(m.createdAt)
-				return d >= prevStartDate && d < startDate
-			}),
-		)
+	const empCountByTeam: Record<string, number> = {}
+	for (const g of employeeCounts) empCountByTeam[g.teamId] = g._count.id
+
+	const entriesByTeam: Record<string, typeof allEntries> = {}
+	for (const entry of allEntries) {
+		const { teamId } = entry.employee
+		if (!entriesByTeam[teamId]) entriesByTeam[teamId] = []
+		entriesByTeam[teamId].push(entry)
+	}
+
+	const teamData = teams.map(team => {
+		const teamEntries = entriesByTeam[team.id] ?? []
+		const currentEntries = teamEntries.filter(e => e.createdAt >= startDate)
+		const prevEntries = teamEntries.filter(e => e.createdAt >= prevStartDate && e.createdAt < startDate)
 
 		const avgMood = currentEntries.length > 0
-			? Math.round((currentEntries.reduce((s: number, e: any) => s + e.moodLevel, 0) / currentEntries.length) * 100) / 100
+			? Math.round((currentEntries.reduce((s, e) => s + e.moodLevel, 0) / currentEntries.length) * 100) / 100
 			: 0
 		const prevAvgMood = prevEntries.length > 0
-			? Math.round((prevEntries.reduce((s: number, e: any) => s + e.moodLevel, 0) / prevEntries.length) * 100) / 100
+			? Math.round((prevEntries.reduce((s, e) => s + e.moodLevel, 0) / prevEntries.length) * 100) / 100
 			: 0
 
 		const reasonCounts: Record<string, number> = {}
+		const moodDistribution = [0, 0, 0, 0, 0]
 		for (const entry of currentEntries) {
+			moodDistribution[entry.moodLevel - 1]++
 			for (const reason of entry.reasons) {
 				reasonCounts[reason.category] = (reasonCounts[reason.category] || 0) + 1
 			}
 		}
 
-		const moodDistribution = [0, 0, 0, 0, 0]
-		for (const entry of currentEntries) {
-			moodDistribution[entry.moodLevel - 1]++
-		}
+		const employeeCount = empCountByTeam[team.id] ?? 0
+		const uniqueParticipants = new Set(currentEntries.map(e => e.employeeId)).size
 
 		return {
 			id: team.id,
 			name: team.name,
 			department: team.department.name,
-			employeeCount: team.employees.length,
+			employeeCount,
 			avgMood,
 			prevAvgMood,
 			change: Math.round((avgMood - prevAvgMood) * 100) / 100,
 			totalEntries: currentEntries.length,
-			participationRate: Math.round(
-				(new Set(currentEntries.map((e: any) => e.employeeId)).size / Math.max(team.employees.length, 1)) * 100,
-			),
+			participationRate: Math.round((uniqueParticipants / Math.max(employeeCount, 1)) * 100),
 			moodDistribution,
 			topReasons: Object.entries(reasonCounts)
 				.sort((a, b) => b[1] - a[1])
@@ -83,16 +91,16 @@ export async function GET(req: NextRequest) {
 		}
 	})
 
-	const deptNames = [...new Set(teams.map((t: any) => t.department.name))] as string[]
-	const departments = deptNames.map((deptName: string) => {
-		const deptTeams = teamData.filter((t: any) => t.department === deptName)
-		const totalEntries = deptTeams.reduce((s: number, t: any) => s + t.totalEntries, 0)
-		const totalMood = deptTeams.reduce((s: number, t: any) => s + t.avgMood * t.totalEntries, 0)
+	const deptNames = [...new Set(teams.map(t => t.department.name))]
+	const departments = deptNames.map(deptName => {
+		const deptTeams = teamData.filter(t => t.department === deptName)
+		const totalEntries = deptTeams.reduce((s, t) => s + t.totalEntries, 0)
+		const totalMood = deptTeams.reduce((s, t) => s + t.avgMood * t.totalEntries, 0)
 		return {
 			name: deptName,
 			avgMood: totalEntries > 0 ? Math.round((totalMood / totalEntries) * 100) / 100 : 0,
 			teams: deptTeams,
-			employeeCount: deptTeams.reduce((s: number, t: any) => s + t.employeeCount, 0),
+			employeeCount: deptTeams.reduce((s, t) => s + t.employeeCount, 0),
 		}
 	})
 

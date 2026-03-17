@@ -25,14 +25,19 @@ export async function GET(req: NextRequest) {
 		if (location) (where.employee as Record<string, unknown>).location = location
 	}
 
-	const entries = await prisma.moodEntry.findMany({
-		where,
-		include: {
-			reasons: true,
-			employee: { select: { location: true, teamId: true } },
-		},
-		orderBy: { createdAt: 'asc' },
-	})
+	const [entries, totalEmployees] = await Promise.all([
+		prisma.moodEntry.findMany({
+			where,
+			select: {
+				moodLevel: true,
+				createdAt: true,
+				reasons: { select: { category: true } },
+				employee: { select: { location: true, teamId: true } },
+			},
+			orderBy: { createdAt: 'asc' },
+		}),
+		prisma.employee.count(),
+	])
 
 	const grouped: Record<string, { sum: number; count: number; reasons: Record<string, number> }> = {}
 
@@ -68,7 +73,6 @@ export async function GET(req: NextRequest) {
 			reasons: data.reasons,
 		}))
 
-	const totalEmployees = await prisma.employee.count()
 	const totalEntries = entries.length
 	const avgMood = entries.length > 0
 		? Math.round((entries.reduce((s: number, e: { moodLevel: number }) => s + e.moodLevel, 0) / entries.length) * 100) / 100

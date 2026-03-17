@@ -45,6 +45,8 @@ model Employee {
   team               Team        @relation(fields: [teamId], references: [id])
   moodEntries        MoodEntry[]
   createdAt          DateTime    @default(now())
+
+  @@index([teamId])
 }
 
 model MoodEntry {
@@ -58,6 +60,9 @@ model MoodEntry {
   sentiment   Float?
   reasons     MoodReason[]
   createdAt   DateTime     @default(now())
+
+  @@index([createdAt])
+  @@index([employeeId])
 }
 
 model MoodReason {
@@ -65,6 +70,8 @@ model MoodReason {
   moodEntryId String
   moodEntry   MoodEntry @relation(fields: [moodEntryId], references: [id])
   category    String
+
+  @@index([moodEntryId])
 }
 
 model OrgEvent {
