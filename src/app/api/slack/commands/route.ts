@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTeamAggregations, generateOrgSummary, generateTeamSummary } from '@/lib/mock-ai'
 import { buildMoodModal } from '@/lib/slack'
+import { verifySlackSignature } from '@/lib/slack-verify'
 
 export async function POST(req: NextRequest) {
-	const formData = await req.formData()
+	const rawBody = await req.text()
+	if (!await verifySlackSignature(req, rawBody)) {
+		return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+	}
+	const formData = new URLSearchParams(rawBody)
 	const command = formData.get('command') as string
 	const text = (formData.get('text') as string || '').trim()
 	const triggerId = formData.get('trigger_id') as string

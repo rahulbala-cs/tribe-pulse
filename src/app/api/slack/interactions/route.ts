@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { scoreSentiment } from '@/lib/mock-ai'
 import { getEmpathyResponse, buildMoodModal } from '@/lib/slack'
 import { MOOD_SCALE } from '@/lib/constants'
+import { verifySlackSignature } from '@/lib/slack-verify'
 
 async function findOrCreateEmployee(slackUserId: string, userName?: string) {
 	let employee = await prisma.employee.findUnique({
@@ -39,7 +40,11 @@ async function sendDM(userId: string, text: string) {
 }
 
 export async function POST(req: NextRequest) {
-	const formData = await req.formData()
+	const rawBody = await req.text()
+	if (!await verifySlackSignature(req, rawBody)) {
+		return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+	}
+	const formData = new URLSearchParams(rawBody)
 	const payloadStr = formData.get('payload') as string
 	if (!payloadStr) {
 		return NextResponse.json({ error: 'No payload' }, { status: 400 })
