@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
+import { randomUUID } from 'crypto'
 
 const prisma = new PrismaClient()
+
+async function batchCreate<T>(items: T[], fn: (chunk: T[]) => Promise<unknown>, size = 500) {
+	for (let i = 0; i < items.length; i += size) {
+		await fn(items.slice(i, i + size))
+	}
+}
 
 const MOOD_LABELS = ['Burned Out', 'Stressed', 'Neutral', 'Happy', 'Thriving']
 const LOCATIONS = ['Bangalore', 'Mumbai', 'Remote-India', 'Singapore']
@@ -125,8 +132,13 @@ export async function POST(req: NextRequest) {
 			}
 		}
 
+		// Build all employee data with pre-generated IDs — single createMany instead of 210 creates
 		const allTeamNames = Object.keys(teamMap)
 		const employees: { id: string; teamName: string; location: string; isLowMood: boolean }[] = []
+		const employeeRows: {
+			id: string; name: string; email: string; slackUserId: string
+			location: string; teamId: string; isAnonymousDefault: boolean
+		}[] = []
 		const usedNames = new Set<string>()
 
 		for (let i = 0; i < 210; i++) {
@@ -138,22 +150,29 @@ export async function POST(req: NextRequest) {
 
 			const teamName = allTeamNames[i % allTeamNames.length]
 			const location = LOCATIONS[i % LOCATIONS.length]
+			const id = randomUUID()
 
-			const emp = await prisma.employee.create({
-				data: {
-					name: fullName,
-					email: `${fullName.toLowerCase().replace(' ', '.')}@techcorp.com`,
-					slackUserId: `U${String(i + 1).padStart(8, '0')}`,
-					location,
-					teamId: teamMap[teamName],
-					isAnonymousDefault: Math.random() > 0.8,
-				},
+			employeeRows.push({
+				id,
+				name: fullName,
+				email: `${fullName.toLowerCase().replace(' ', '.')}@techcorp.com`,
+				slackUserId: `U${String(i + 1).padStart(8, '0')}`,
+				location,
+				teamId: teamMap[teamName],
+				isAnonymousDefault: Math.random() > 0.8,
 			})
-			employees.push({ id: emp.id, teamName, location, isLowMood: i < 4 })
+			employees.push({ id, teamName, location, isLowMood: i < 4 })
 		}
 
+		await prisma.employee.createMany({ data: employeeRows })
+
+		// Build all mood entries + reasons with pre-generated IDs — bulk insert instead of ~3700 creates
 		const today = new Date()
-		let entryCount = 0
+		const entryRows: {
+			id: string; employeeId: string; moodLevel: number; moodLabel: string
+			freeText: string | null; isAnonymous: boolean; sentiment: number | null; createdAt: Date
+		}[] = []
+		const reasonRows: { id: string; moodEntryId: string; category: string }[] = []
 
 		for (let dayOffset = 29; dayOffset >= 0; dayOffset--) {
 			const date = new Date(today)
@@ -177,21 +196,25 @@ export async function POST(req: NextRequest) {
 				const entryDate = new Date(date)
 				entryDate.setHours(18 + Math.floor(Math.random() * 3), Math.floor(Math.random() * 60))
 
-				await prisma.moodEntry.create({
-					data: {
-						employeeId: emp.id,
-						moodLevel: mood,
-						moodLabel: MOOD_LABELS[mood - 1],
-						freeText,
-						isAnonymous: Math.random() > 0.7,
-						sentiment: freeText ? (mood - 3) / 2 + (Math.random() - 0.5) * 0.3 : null,
-						createdAt: entryDate,
-						reasons: { create: reasons.map(cat => ({ category: cat })) },
-					},
+				const entryId = randomUUID()
+				entryRows.push({
+					id: entryId,
+					employeeId: emp.id,
+					moodLevel: mood,
+					moodLabel: MOOD_LABELS[mood - 1],
+					freeText,
+					isAnonymous: Math.random() > 0.7,
+					sentiment: freeText ? (mood - 3) / 2 + (Math.random() - 0.5) * 0.3 : null,
+					createdAt: entryDate,
 				})
-				entryCount++
+				for (const cat of reasons) {
+					reasonRows.push({ id: randomUUID(), moodEntryId: entryId, category: cat })
+				}
 			}
 		}
+
+		await batchCreate(entryRows, chunk => prisma.moodEntry.createMany({ data: chunk }))
+		await batchCreate(reasonRows, chunk => prisma.moodReason.createMany({ data: chunk }))
 
 		const events = [
 			{ name: 'Q1 Planning Kickoff', description: 'Annual planning and goal setting', daysAgo: 28 },
@@ -201,13 +224,14 @@ export async function POST(req: NextRequest) {
 			{ name: 'Company Offsite', description: 'Annual company retreat', daysAgo: 5 },
 			{ name: 'Hackathon Week', description: 'Internal innovation hackathon', daysAgo: 2 },
 		]
-		for (const evt of events) {
+		const evtRows = events.map(evt => {
 			const evtDate = new Date(today)
 			evtDate.setDate(evtDate.getDate() - evt.daysAgo)
-			await prisma.orgEvent.create({ data: { name: evt.name, description: evt.description, date: evtDate } })
-		}
+			return { name: evt.name, description: evt.description, date: evtDate }
+		})
+		await prisma.orgEvent.createMany({ data: evtRows })
 
-		return NextResponse.json({ success: true, employees: employees.length, moodEntries: entryCount })
+		return NextResponse.json({ success: true, employees: employees.length, moodEntries: entryRows.length })
 	} catch (err: unknown) {
 		const error = err as { message?: string }
 		return NextResponse.json({ success: false, error: error.message }, { status: 500 })
